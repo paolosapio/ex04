@@ -1,0 +1,105 @@
+picoshell
+popen
+
+vbc
+argo
+
+
+
+Assignment name:	picoshell
+Expected files:		picoshell.c
+Allowed functions:	close, fork, wait, exit, execvp, dup2, pipe
+___________________________________________________________________
+
+Write the following function:
+
+int    picoshell(char **cmds[]);
+
+The goal of this function is to execute a pipeline. It must execute each
+commands of cmds and connect the output of one to the input of the
+next command (just like a shell).
+e
+Cmds contains a null-terminated list of valid commands. Each rows
+of cmds are an argv array directly usable for a call to execvp. The first
+arguments of each command is the command name or path and can be passed
+directly as the first argument of execvp.
+
+If any error occur, The function must return 1 (you must of course
+close all the open fds before). otherwise the function must wait all child
+processes and return 0. You will find in this directory a file main.c which
+contain something to help you test your function.
+
+
+Examples: 
+./picoshell /bin/ls "|" /usr/bin/grep picoshell
+picoshell
+./picoshell echo 'squalala' "|" cat "|" sed 's/a/b/g'
+squblblb
+
+___________________________________________________________________
+
+Old summary by a student:
+You are given a main function. It converts received arguments into cmds array
+of strings. When there is a pipe the commands after the pipe are in the next
+array of strings. You have to create a pipeline using the cmds you receive from
+the main, and execute them. If there is any error the function should return 1.
+Close all FFS before returning. If the cmds executed successfully wait all
+child processes and return 0.
+
+
+___________________________________________________________________
+
+### 🧠 Enunciado traducido:
+
+**Escribe la siguiente función:**
+
+```c
+int picoshell(char **cmds[]);
+```
+
+El objetivo de esta función es ejecutar una **pipeline**.
+
+Debe ejecutar cada uno de los comandos
+contenidos en `cmds` y conectar la salida de uno con
+la entrada del siguiente comando (igual que lo hace un shell).
+
+`cmds` contiene una lista terminada en `NULL` de comandos válidos. Cada fila (elemento)
+de `cmds` es un array `argv` directamente utilizable en una llamada a `execvp`. El primer
+argumento de cada comando es el nombre o la ruta del comando y puede pasarse
+directamente como primer argumento de `execvp`.
+
+Si ocurre cualquier error, la función debe devolver `1` (y por supuesto, antes de hacerlo,
+debes cerrar todos los *file descriptors* abiertos).
+Si no hay errores, la función debe esperar a todos los procesos hijos y devolver `0`.
+
+En este directorio encontrarás un archivo `main.c` que contiene código para ayudarte
+a probar tu función.
+
+---
+
+### 🧪 Ejemplos:
+
+```sh
+./picoshell /bin/ls "|" /usr/bin/grep picoshell
+# Salida esperada:
+picoshell
+
+./picoshell echo 'squalala' "|" cat "|" sed 's/a/b/g'
+# Salida esperada:
+squblblb
+```
+
+---
+
+### 📚 Resumen:
+
+Se te da una función `main` que convierte los argumentos recibidos
+en un array `cmds` de strings.
+Cuando hay un pipe (`|`), los comandos después del pipe están en la siguiente fila del array.
+
+Tú debes crear un *pipeline* usando los comandos que recibes en `cmds`, y ejecutarlos.
+Si ocurre algún error,
+la función debe devolver `1`, cerrando antes todos los descriptores de archivo abiertos.
+
+Si los comandos se ejecutan correctamente,
+se debe esperar a todos los procesos hijos y devolver `0`.
