@@ -4,8 +4,6 @@ popen
 vbc
 argo
 
-
-
 Assignment name:	picoshell
 Expected files:		picoshell.c
 Allowed functions:	close, fork, wait, exit, execvp, dup2, pipe
@@ -36,7 +34,9 @@ picoshell
 ./picoshell echo 'squalala' "|" cat "|" sed 's/a/b/g'
 squblblb
 
+
 ___________________________________________________________________
+
 
 Old summary by a student:
 You are given a main function. It converts received arguments into cmds array
@@ -46,16 +46,13 @@ the main, and execute them. If there is any error the function should return 1.
 Close all FFS before returning. If the cmds executed successfully wait all
 child processes and return 0.
 
-
 ___________________________________________________________________
+
 
 ### 🧠 Enunciado traducido:
 
-**Escribe la siguiente función:**
-
-```c
+**Escribe la siguiente función:
 int picoshell(char **cmds[]);
-```
 
 El objetivo de esta función es ejecutar una **pipeline**.
 
