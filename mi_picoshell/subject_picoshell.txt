@@ -68,7 +68,6 @@ directamente como primer argumento de `execvp`.
 Si ocurre cualquier error, la función debe devolver `1` (y por supuesto, antes de hacerlo,
 debes cerrar todos los *file descriptors* abiertos).
 Si no hay errores, la función debe esperar a todos los procesos hijos y devolver `0`.
-
 En este directorio encontrarás un archivo `main.c` que contiene código para ayudarte
 a probar tu función.
 
@@ -78,7 +77,7 @@ a probar tu función.
 
 ```sh
 ./picoshell /bin/ls "|" /usr/bin/grep picoshell
-# Salida esperada:
+# Salida esperada:qq
 picoshell
 
 ./picoshell echo 'squalala' "|" cat "|" sed 's/a/b/g'
