@@ -1,3 +1,13 @@
+//close, fork, wait, exit, execvp, dup2, pipe
+/*
+	int		close(int fd);
+	pid_t	fork(void);
+	pid_t	wait(int *wstatus);
+	void	_exit(int status);
+	int		execvp(const char *file, char *const argv[]);
+	int		dup2(int oldfd, int newfd);
+	int		pipe(int pipefd[2]);
+*/
 
 #include <unistd.h>
 #include <sys/wait.h>
@@ -6,64 +16,100 @@
 #include <stdlib.h>
 
 #define HIJO 0
+
+int one_cmds(char **cmds[])
+{
+	pid_t	family;
+	int		exitcode = 42;
+
+	family = fork();
+	if (family == HIJO)
+	{
+		exitcode = execvp(cmds[0][0], cmds[0]);
+		printf("exitcode: [%d]\n", exitcode);
+
+		exit(exitcode);
+	}
+	// int a = 0;
+	while (/* a =  */wait(NULL) >= 0) // wait espera el hijo y se queda con su grito de dolor
+	{
+		// printf("un hijo a muerto: %d\n", a);
+	}
+	return (0);
+}
+
+
+
+/* int one_cmds(char **cmds[])
+{
+	pid_t family;
+	int exitcode = 42;
+
+	printf("cmds[0][0]:%s\n", cmds[0][0]);
+	family = fork();
+	if (family == HIJO)
+	{
+		exitcode = execvp(cmds[0][0], cmds[0]);
+		printf("[%d]\n", exitcode);
+		if (exitcode == -1)
+		{
+			printf("Error: command failed\n");
+			exit (-1);
+		}
+	}
+	int a;
+	while (a = wait(NULL) > 0)
+	{
+		printf("wait(NULL) %d\n", a);
+	}
+	return (exitcode);
+} */
+
 #define FD_READ_OUT 0
 #define FD_WRITE_IN 1
 
-
-int num_of_cmds(char **cmds[])
+int two_cmds(char **cmds[])
 {
-	int i = 0;
-
-	while (cmds[i])
-		i++;
-	return (i);
-}
-
-void picoshell(char **cmds[])
-{
-	int		pipe_fd[2];
-	pid_t	family;
-	int		n_cmds = num_of_cmds(cmds);
+	int pipe_fd[2];
+	pid_t family;
 
 	pipe(pipe_fd);
 	family = fork();
 	if (family == HIJO)
 	{
-		close(pipe_fd[FD_READ_OUT]);
 		dup2(pipe_fd[FD_WRITE_IN], 1);
 		close(pipe_fd[FD_WRITE_IN]);
+		close(pipe_fd[FD_READ_OUT]);
 		execvp(cmds[0][0], cmds[0]);
-		//fprintf(stderr, "ERROR %d\n", execvp(cmds[0][0], cmds[0]));
-		execvp(cmds[0][0], cmds[0]);
-		exit(127);
+		exit(1);
 	}
 	close(pipe_fd[FD_WRITE_IN]);
 	family = fork();
 	if (family == HIJO)
 	{
-		close(pipe_fd[FD_WRITE_IN]);
 		dup2(pipe_fd[FD_READ_OUT], STDIN_FILENO);
+		close(pipe_fd[FD_WRITE_IN]);
 		close(pipe_fd[FD_READ_OUT]);
-		fprintf(stderr, "ERROR %d\n", execvp(cmds[1][0], cmds[1]));
-		exit(127);
+		printf("ERROR %d\n", execvp(cmds[1][0], cmds[1]));
+		exit(1);
 	}
 	close(pipe_fd[FD_READ_OUT]);
-	int wait_status;
-	int i = 0;
-	while(i++ < n_cmds)
-	{
-		wait(&wait_status);
-		if (WIFEXITED(wait_status))
-		{
-			fprintf(stderr, "EXIT STATUS: %d", WEXITSTATUS(wait_status));
-			exit (WEXITSTATUS(wait_status));
-		}
-	}
 
-	//fprintf(stderr, "Error: command failed\n");
+	int i = 0;
+	while(wait(NULL) > 0)
+	{
+		printf("hijo Nº%d: muerto\n", ++i);
+	}
+	return (0);
 }
 
-// Allowed functions:	close, fork, wait, exit, execvp, dup2, pipe
+int picoshell(char **cmds[])
+{
+	// if	(one_cmds(cmds) == -1)
+	// 	return (-1);
+	two_cmds(cmds);
+	return (0);
+}
 
 int main(void)
 {
@@ -74,8 +120,7 @@ int main(void)
 						NULL}; // <----------
 	
 	char *cmdcaca[] = {"caca", "hello world", NULL};
-    char **cmdsERR[] = {cmdcaca, NULL};
-    picoshell(cmdsERR);
+    char **cmdsERR[] = {cmdcaca, cmd_tr, NULL};
 
     // printf("\nTest 2: echo hello world | tr a-z A-Z\n");
 
@@ -83,6 +128,8 @@ int main(void)
     //     fprintf(stderr, "Error: command failed\n");
 
 
+    if (picoshell(cmds2) == -1)
+        fprintf(stderr, "Error: command failed\n");
 	// fprintf(stderr, "viva la vida\n");
 
 	/*char *cmd4[] = {"echo", "hello world", NULL};
