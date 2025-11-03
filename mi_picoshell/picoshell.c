@@ -13,18 +13,108 @@
 int num_of_cmds(char **cmds[])
 {
 	int i = 0;
-
+	
 	while (cmds[i])
 		i++;
 	return (i);
 }
+
 
 void picoshell(char **cmds[])
 {
 	int		pipe_fd[2];
 	pid_t	family;
 	int		n_cmds = num_of_cmds(cmds);
+	int		wait_status;
+	int		i = 0;
+	printf("numero comandos: %d\n", n_cmds);
+	while (i++ < n_cmds)
+	{
+		pipe(pipe_fd);
+		family = fork();
+		/*
+		HIJO1:
+		vamos a executar y escribir en el pipe
+		cuando muere hijo1 seguimos con hijo2:*/
+		
+		if (family == HIJO)
+		{
+			close(pipe_fd[FD_READ_OUT]);
+			dup2(pipe_fd[FD_WRITE_IN], 1);
+			close(pipe_fd[FD_WRITE_IN]);
+			execvp(cmds[0][0], cmds[0]);
+			exit(127);
+		}
+		printf("hijo1 terminado (ha escrito en el pipe)\n");
+		i = 0;
+		int hijos = 2;
+		dup2(pipe_fd[FD_WRITE_IN], 1);
+		close(pipe_fd[FD_WRITE_IN]);
+		dup2(pipe_fd[FD_READ_OUT], 0);
+		close(pipe_fd[FD_READ_OUT]);
+		while(i++ < (n_cmds - 1))
+		{
+			family = fork();
+			if (family == HIJO)
+				fprintf(stderr, "hijo%d\n", hijos++);
+		}
+		/*
+		HIJO2:
+			creamos un segundo while hasta que llegamos al ultimo comando HIJO_LAST
+			vamos a leer de pipe anterior y escribir en el pipe siguente de salida,
+			y se repite hasta el ultimo cmd
+			
 
+		*/
+	}
+	i = 0;
+	while(i++ < n_cmds)
+	{
+		wait(&wait_status);
+
+		if (WIFEXITED(wait_status))
+		{
+			exit(WEXITSTATUS(wait_status));
+		}
+
+		if (WIFSIGNALED(wait_status))
+		{
+			exit(WTERMSIG(wait_status));
+		}
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* 
+void picoshell(char **cmds[]) // dos comandos
+{
+	int		pipe_fd[2];
+	pid_t	family;
+	int		n_cmds = num_of_cmds(cmds);
+	int		wait_status;
+	
 	pipe(pipe_fd);
 	family = fork();
 	if (family == HIJO)
@@ -32,8 +122,6 @@ void picoshell(char **cmds[])
 		close(pipe_fd[FD_READ_OUT]);
 		dup2(pipe_fd[FD_WRITE_IN], 1);
 		close(pipe_fd[FD_WRITE_IN]);
-		execvp(cmds[0][0], cmds[0]);
-		//fprintf(stderr, "ERROR %d\n", execvp(cmds[0][0], cmds[0]));
 		execvp(cmds[0][0], cmds[0]);
 		exit(127);
 	}
@@ -44,38 +132,48 @@ void picoshell(char **cmds[])
 		close(pipe_fd[FD_WRITE_IN]);
 		dup2(pipe_fd[FD_READ_OUT], STDIN_FILENO);
 		close(pipe_fd[FD_READ_OUT]);
-		fprintf(stderr, "ERROR %d\n", execvp(cmds[1][0], cmds[1]));
+		execvp(cmds[1][0], cmds[1]);
 		exit(127);
 	}
 	close(pipe_fd[FD_READ_OUT]);
-	int wait_status;
 	int i = 0;
+	
 	while(i++ < n_cmds)
 	{
 		wait(&wait_status);
+
 		if (WIFEXITED(wait_status))
 		{
-			fprintf(stderr, "EXIT STATUS: %d", WEXITSTATUS(wait_status));
-			exit (WEXITSTATUS(wait_status));
+			exit(WEXITSTATUS(wait_status));
+		}
+
+		if (WIFSIGNALED(wait_status))
+		{
+			exit(WTERMSIG(wait_status));
 		}
 	}
+} */
 
-	//fprintf(stderr, "Error: command failed\n");
-}
-
+/* Hazlo tú: escribe el bucle while (wait(&status) > 0) completo, manejando los dos casos:
+si el proceso terminó normalmente (WIFEXITED)
+si terminó por señal (WIFSIGNALED)
+y mostrando (por ejemplo) el código de salida o el número de señal. */
 // Allowed functions:	close, fork, wait, exit, execvp, dup2, pipe
 
 int main(void)
 {
 	char *cmd_echo[] = {"echo", "hello world", NULL};
     char *cmd_tr[] = {"tr", "a-z", "A-Z", NULL};
-    char **cmds2[] = {	cmd_echo, 
-						cmd_tr, 
-						NULL}; // <----------
+	char *cmd_cat[] = {"cat", "-e", NULL};
+
+    char **cmds3[] = {	cmd_echo,
+						cmd_tr,
+						cmd_cat,
+						NULL};
+	picoshell(cmds3);
 	
 	char *cmdcaca[] = {"caca", "hello world", NULL};
     char **cmdsERR[] = {cmdcaca, NULL};
-    picoshell(cmdsERR);
 
     // printf("\nTest 2: echo hello world | tr a-z A-Z\n");
 
