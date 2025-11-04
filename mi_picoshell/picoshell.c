@@ -20,52 +20,63 @@ int num_of_cmds(char **cmds[])
 }
 
 
-void picoshell(char **cmds[])
+int	picoshell(char **cmds[])
 {
 	int		pipe_fd[2];
+	int		restore_system_fd[2];
 	pid_t	family;
 	int		n_cmds = num_of_cmds(cmds);
 	int		wait_status;
 	int		i = 0;
-	printf("numero comandos: %d\n", n_cmds);
-	while (i++ < n_cmds)
+
+	printf("numero comandos: %d\n", n_cmds);	
+	while (cmds[i])
 	{
-		pipe(pipe_fd);
+		if(pipe(pipe_fd) == -1)
+			return (1);
 		family = fork();
-		/*
-		HIJO1:
-		vamos a executar y escribir en el pipe
-		cuando muere hijo1 seguimos con hijo2:*/
-		
+		if (family == -1)
+			return (1);
+
+		//HIJOS:
 		if (family == HIJO)
 		{
-			close(pipe_fd[FD_READ_OUT]);
-			dup2(pipe_fd[FD_WRITE_IN], 1);
-			close(pipe_fd[FD_WRITE_IN]);
-			execvp(cmds[0][0], cmds[0]);
-			exit(127);
-		}
-		printf("hijo1 terminado (ha escrito en el pipe)\n");
-		i = 0;
-		int hijos = 2;
-		dup2(pipe_fd[FD_WRITE_IN], 1);
-		close(pipe_fd[FD_WRITE_IN]);
-		dup2(pipe_fd[FD_READ_OUT], 0);
-		close(pipe_fd[FD_READ_OUT]);
-		while(i++ < (n_cmds - 1))
-		{
-			family = fork();
-			if (family == HIJO)
-				fprintf(stderr, "hijo%d\n", hijos++);
-		}
-		/*
-		HIJO2:
-			creamos un segundo while hasta que llegamos al ultimo comando HIJO_LAST
-			vamos a leer de pipe anterior y escribir en el pipe siguente de salida,
-			y se repite hasta el ultimo cmd
-			
+			int my_output;
+			//caso primer hijo:
+			/* if (i == 0)
+			{
+				my_output = pipe_fd[1];
+				dup2(pipe_fd[FD_READ_OUT], 0);
+				dup2(my_output, 1);
+				close(pipe_fd[FD_WRITE_IN]);
+				close(pipe_fd[FD_READ_OUT]);
+				execvp(cmds[i][0], cmds[i]);
+				exit(127); 
+			} */
 
-		*/
+			//caso ultimo hijo:
+			if (i  == n_cmds - 1)
+			{
+				my_output = 1;
+				dup2(pipe_fd[FD_READ_OUT], 0);
+				dup2(my_output, 1);
+				close(pipe_fd[FD_WRITE_IN]);
+				close(pipe_fd[FD_READ_OUT]);
+				execvp(cmds[i][0], cmds[i]);
+				exit(127);
+			}else {
+				my_output = restore_system_fd[1];
+				dup2(pipe_fd[FD_READ_OUT], 0);
+				dup2(my_output, 1);
+				close(pipe_fd[FD_WRITE_IN]);
+				close(pipe_fd[FD_READ_OUT]);
+				execvp(cmds[i][0], cmds[i]);
+				exit(127); 
+		}
+	}
+		close(pipe_fd[1]);
+		dup2(pipe_fd[0], restore_system_fd[0]);
+		i++;
 	}
 	i = 0;
 	while(i++ < n_cmds)
@@ -166,11 +177,15 @@ int main(void)
     char *cmd_tr[] = {"tr", "a-z", "A-Z", NULL};
 	char *cmd_cat[] = {"cat", "-e", NULL};
 
+    char **cmds2[] = {	cmd_echo,
+						cmd_tr,
+						NULL};
+
     char **cmds3[] = {	cmd_echo,
 						cmd_tr,
 						cmd_cat,
 						NULL};
-	picoshell(cmds3);
+	picoshell(cmds2);
 	
 	char *cmdcaca[] = {"caca", "hello world", NULL};
     char **cmdsERR[] = {cmdcaca, NULL};
