@@ -6,9 +6,12 @@
 #include <stdlib.h>
 
 #define HIJO 0
+
 #define FD_READ_OUT 0
 #define FD_WRITE_IN 1
 
+#define BKP_STDIN 10
+#define BKP_STDOUT 11
 
 int num_of_cmds(char **cmds[])
 {
@@ -19,65 +22,86 @@ int num_of_cmds(char **cmds[])
 	return (i);
 }
 
-
 int	picoshell(char **cmds[])
 {
-	int		pipe_fd[2];
-	int		restore_system_fd[2];
+	int		previus_pipe_read_end = -1;
+	int		pipe_child[2];
+	int		bkp_sys_fd[2];
 	pid_t	family;
 	int		n_cmds = num_of_cmds(cmds);
 	int		wait_status;
 	int		i = 0;
 
-	printf("numero comandos: %d\n", n_cmds);	
+	// Hacemos copia de los descriptores originales del sistema
+	dup2(STDIN_FILENO, 10);
+	dup2(STDOUT_FILENO, 11);
+	bkp_sys_fd[BKP_STDIN] = 10;
+	bkp_sys_fd[BKP_STDOUT] = 11;
+
+	fprintf(stderr, "numero comandos: %d\n", n_cmds);
+
 	while (cmds[i])
 	{
-		if(pipe(pipe_fd) == -1)
-			return (1);
+		// Si no es el último comando, creamos un nuevo pipe
+		if (i < n_cmds - 1)
+		{
+			if (pipe(pipe_child) == -1)
+			{
+				perror("pipe error");
+				return (1);
+			}
+		}
+
 		family = fork();
 		if (family == -1)
+		{
+			perror("fork error");
 			return (1);
+		}
 
-		//HIJOS:
+		// ====== HIJO ======
 		if (family == HIJO)
 		{
-			int my_output;
-			//caso primer hijo:
-			/* if (i == 0)
-			{
-				my_output = pipe_fd[1];
-				dup2(pipe_fd[FD_READ_OUT], 0);
-				dup2(my_output, 1);
-				close(pipe_fd[FD_WRITE_IN]);
-				close(pipe_fd[FD_READ_OUT]);
-				execvp(cmds[i][0], cmds[i]);
-				exit(127); 
-			} */
+			fprintf(stderr, "Ejecutando hijo %d: %s\n", i, cmds[i][0]);
+			fflush(stderr);
 
-			//caso ultimo hijo:
-			if (i  == n_cmds - 1)
+			// Si no es el primer comando → redirige stdin desde pipe anterior
+			if (i > 0)
 			{
-				my_output = 1;
-				dup2(pipe_fd[FD_READ_OUT], 0);
-				dup2(my_output, 1);
-				close(pipe_fd[FD_WRITE_IN]);
-				close(pipe_fd[FD_READ_OUT]);
-				execvp(cmds[i][0], cmds[i]);
-				exit(127);
-			}else {
-				my_output = restore_system_fd[1];
-				dup2(pipe_fd[FD_READ_OUT], 0);
-				dup2(my_output, 1);
-				close(pipe_fd[FD_WRITE_IN]);
-				close(pipe_fd[FD_READ_OUT]);
-				execvp(cmds[i][0], cmds[i]);
-				exit(127); 
+				dup2(previus_pipe_read_end, STDIN_FILENO);
+				close(previus_pipe_read_end);
+			}
+
+			// Si no es el último comando → redirige stdout al pipe nuevo
+			if (i < n_cmds - 1)
+			{
+				close(pipe_child[FD_READ_OUT]);
+				dup2(pipe_child[FD_WRITE_IN], STDOUT_FILENO);
+				close(pipe_child[FD_WRITE_IN]);
+			}
+
+			// Ejecuta el comando
+			if (execvp(cmds[i][0], cmds[i]) == -1)
+			{
+				perror("execvp error");
+				exit(EXIT_FAILURE);
+			}
 		}
-	}
-		close(pipe_fd[1]);
-		dup2(pipe_fd[0], restore_system_fd[0]);
+
+		// ====== PADRE ======
+		if (i > 0)
+			close(previus_pipe_read_end); // ya no se necesita el pipe anterior
+
+		if (i < n_cmds - 1)
+		{
+			close(pipe_child[FD_WRITE_IN]); // cerramos el write del pipe actual
+			previus_pipe_read_end = pipe_child[FD_READ_OUT]; // guardamos el nuevo read
+		}
+
 		i++;
 	}
+
+
 	i = 0;
 	while(i++ < n_cmds)
 	{
@@ -95,85 +119,37 @@ int	picoshell(char **cmds[])
 	}
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* 
-void picoshell(char **cmds[]) // dos comandos
-{
-	int		pipe_fd[2];
-	pid_t	family;
-	int		n_cmds = num_of_cmds(cmds);
-	int		wait_status;
-	
-	pipe(pipe_fd);
-	family = fork();
-	if (family == HIJO)
-	{
-		close(pipe_fd[FD_READ_OUT]);
-		dup2(pipe_fd[FD_WRITE_IN], 1);
-		close(pipe_fd[FD_WRITE_IN]);
-		execvp(cmds[0][0], cmds[0]);
-		exit(127);
-	}
-	close(pipe_fd[FD_WRITE_IN]);
-	family = fork();
-	if (family == HIJO)
-	{
-		close(pipe_fd[FD_WRITE_IN]);
-		dup2(pipe_fd[FD_READ_OUT], STDIN_FILENO);
-		close(pipe_fd[FD_READ_OUT]);
-		execvp(cmds[1][0], cmds[1]);
-		exit(127);
-	}
-	close(pipe_fd[FD_READ_OUT]);
-	int i = 0;
-	
-	while(i++ < n_cmds)
-	{
-		wait(&wait_status);
-
-		if (WIFEXITED(wait_status))
-		{
-			exit(WEXITSTATUS(wait_status));
-		}
-
-		if (WIFSIGNALED(wait_status))
-		{
-			exit(WTERMSIG(wait_status));
-		}
-	}
-} */
-
-/* Hazlo tú: escribe el bucle while (wait(&status) > 0) completo, manejando los dos casos:
-si el proceso terminó normalmente (WIFEXITED)
-si terminó por señal (WIFSIGNALED)
-y mostrando (por ejemplo) el código de salida o el número de señal. */
 // Allowed functions:	close, fork, wait, exit, execvp, dup2, pipe
 
 int main(void)
 {
-	char *cmd_echo[] = {"echo", "hello world", NULL};
+    char *cmd_ls[] = {"ls", NULL};
+    char *cmd_wc[] = {"wc", "-l", NULL};
+    char **cmds2[] = {cmd_ls, cmd_wc, NULL};
+
+    // debug
+    printf("cmds2[0][0] = %s\n", cmds2[0][0]);
+    printf("cmds2[1][0] = %s\n", cmds2[1][0]);
+    printf("cmds2[1][1] = %s\n", cmds2[1][1]);
+    printf("cmds2[2] = %p (debería ser NULL)\n", (void*)cmds2[2]);
+
+    printf("\n==== TEST ls | wc -l ====\n");
+    picoshell(cmds2);
+    return 0;
+
+/*     // test largo: 5 pipes seguidos
+    char *cmd_a[] = {"seq", "-10", "10", NULL};
+    char *cmd_b[] = {"sort", "-R", NULL};
+    char *cmd_c[] = {"tail", "-n", "7", NULL};
+    char *cmd_d[] = {"cat", "-e", NULL};
+    char *cmd_e[] = {"cat", "-e", NULL};
+    char **cmds5[] = {cmd_a, cmd_b, cmd_c, cmd_d, cmd_e, NULL};
+    printf("\n==== TEST 5 cmds ====\n");
+    picoshell(cmds5); */
+    return 0;
+}
+
+/* 	char *cmd_echo[] = {"echo", "viva la vida", NULL};
     char *cmd_tr[] = {"tr", "a-z", "A-Z", NULL};
 	char *cmd_cat[] = {"cat", "-e", NULL};
 
@@ -184,12 +160,18 @@ int main(void)
     char **cmds3[] = {	cmd_echo,
 						cmd_tr,
 						cmd_cat,
+						cmd_cat,
+						cmd_cat,
+						cmd_cat,
+						cmd_cat,
+						cmd_cat,
 						NULL};
-	picoshell(cmds2);
-	
-	char *cmdcaca[] = {"caca", "hello world", NULL};
-    char **cmdsERR[] = {cmdcaca, NULL};
 
+	picoshell(cmds3); */
+	
+/* 	char *cmdcaca[] = {"caca", "hello world", NULL};
+    char **cmdsERR[] = {cmdcaca, NULL};
+ */
     // printf("\nTest 2: echo hello world | tr a-z A-Z\n");
 
 	// if (picoshell(cmds2) == -1)
@@ -232,5 +214,4 @@ int main(void)
     if (picoshell(cmds3) == 1)
         fprintf(stderr, "Error: command failed\n");
 */
-    return 0;
-}
+
