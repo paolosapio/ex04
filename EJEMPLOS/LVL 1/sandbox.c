@@ -1,219 +1,191 @@
-/*
-Assignment name		:	sandbox
-Expected files		:	sandbox.c
-Allowed functions	:	fork, waitpid, exit, alarm, sigaction, kill,
-						printf, strsignal, errno
-===============================================================================
 
-Write the following function:
 
+
+#define _POSIX_C_SOURCE 200809L
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <errno.h>
+#include <string.h> /* para strerror si hace falta */
 #include <stdbool.h>
-int	sandbox(void (*f)(void), unsigned int timeout, bool verbose)
 
-This function must test if the function f is a nice function or a bad function,
-you will return 1 if f is nice , 0 if f is bad or -1 in case of an error in
-your function.
-
-A function is considered bad if it is terminated or stopped by a signal
-(segfault, abort...), if it exit with any other exit code than 0 or if it
-times out.
-
-If verbose is true, you must write the appropriate message among the following:
-
-"Nice function!\n"
-"Bad function: exited with code <exit_code>\n"
-"Bad function: <signal description>\n"
-"Bad function: timed out after <timeout> seconds\n"
-
-You must not leak processes (even in zombie state, this will be checked using
-wait).
-
-We will test your code with very bad functions.
+/*
+Allowed functions used: fork, waitpid, exit, alarm, sigaction, kill,
+printf, strsignal, errno
 */
 
-// sandbox.c
+static volatile pid_t g_child_pid = 0;
+static volatile sig_atomic_t g_timed_out = 0;
 
-#include <unistd.h>     // fork(), alarm(), _exit()
-#include <sys/wait.h>   // waitpid(), WIFEXITED, WIFSIGNALED, WEXITSTATUS, WTERMSIG
-#include <signal.h>     // sigaction, SIGALRM, SIGKILL, struct sigaction
-#include <stdbool.h>    // bool
-#include <stdio.h>      // printf()
-#include <stdlib.h>     // exit()
-#include <errno.h>      // errno, EINTR
-#include <string.h>     // strsignal()
-
-// Handler vide pour interrompre waitpid() sur SIGALRM
-static void do_nothing(int sig)
+static void alarm_handler(int sig)
 {
-    (void)sig;
+	(void)sig;
+	/* marcar timeout y matar al hijo si existe */
+	g_timed_out = 1;
+	if (g_child_pid > 0)
+	{
+		/* intentar terminarlo de inmediato */
+		kill(g_child_pid, SIGKILL);
+	}
 }
 
 int sandbox(void (*f)(void), unsigned int timeout, bool verbose)
 {
-    pid_t pid = fork();
-    if (pid < 0)
-        return -1;
+	pid_t pid;
+	int status;
+	struct sigaction sa, old_sa;
+	int ret_wait;
+	unsigned int old_alarm = 0;
+	int result = -1; /* por defecto -1 = error en nuestra función */
 
-    if (pid == 0)
-    {
-        // --- Processus enfant ---
-        alarm(timeout);
-        f();
-        _exit(0);
-    }
+	/* preparar handler de SIGALRM */
+	sa.sa_handler = alarm_handler;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+	if (sigaction(SIGALRM, &sa, &old_sa) == -1)
+	{
+		/* error */
+		return -1;
+	}
 
-    // --- Processus parent ---
-    struct sigaction sa = {0};
-    sa.sa_handler = do_nothing;
-    sigemptyset(&sa.sa_mask);
-    sa.sa_flags = 0;
-    if (sigaction(SIGALRM, &sa, NULL) < 0)
-        return -1;
+	pid = fork();
+	if (pid < 0)
+	{
+		/* fork falló: restaurar sigaction y devolver error */
+		sigaction(SIGALRM, &old_sa, NULL);
+		return -1;
+	}
 
-    alarm(timeout);
+	if (pid == 0)
+	{
+		/* hijo: ejecutar la función y salir */
+		/* No debemos tocar handlers del padre ni alarmas */
+		f();
+		_exit(0);
+	}
 
-    int status;
-    pid_t r = waitpid(pid, &status, 0);
-    if (r < 0)
-    {
-        if (errno == EINTR)
-        {
-            // Timeout : kill et récolte de l'enfant
-            kill(pid, SIGKILL);
-            waitpid(pid, NULL, 0);
-            if (verbose)
-                printf("Bad function: timed out after %u seconds\n", timeout);
-            return 0;
-        }
-        return -1;
-    }
+	/* padre */
+	g_child_pid = pid;
+	g_timed_out = 0;
 
-    // Annuler l'alarme restante
-    alarm(0);
+	/* activar alarma si timeout > 0 */
+	if (timeout > 0)
+		old_alarm = alarm(timeout);
 
-    if (WIFEXITED(status))
-    {
-        int code = WEXITSTATUS(status);
-        if (code == 0)
-        {
-            if (verbose)
-                printf("Nice function!\n");
-            return 1;
-        }
-        if (verbose)
-            printf("Bad function: exited with code %d\n", code);
-        return 0;
-    }
-
-    if (WIFSIGNALED(status))
-    {
-        int sig = WTERMSIG(status);
-        if (sig == SIGALRM)
-        {
-            if (verbose)
-                printf("Bad function: timed out after %u seconds\n", timeout);
-        }
-        else
-        {
-            if (verbose)
-                printf("Bad function: %s\n", strsignal(sig));
-        }
-        return 0;
-    }
-
-    // Cas imprévu
-    return -1;
-}
-
-
-/*void ok_f(void)
-{
-	printf("noice. ");
-}
-
-void inf_f(void)
-{
+	/* Esperar al hijo; necesitamos detectar stops (WUNTRACED) y luego reaperlo */
 	while (1)
-		;
+	{
+		errno = 0;
+		ret_wait = waitpid(pid, &status, WUNTRACED);
+		if (ret_wait == -1)
+		{
+			/* error en waitpid: intentar limpiar y devolver -1 */
+			int saved_errno = errno;
+			/* cancelar alarma y restaurar handler */
+			alarm(0);
+			sigaction(SIGALRM, &old_sa, NULL);
+			(void)saved_errno;
+			g_child_pid = 0;
+			return -1;
+		}
+
+		/* Si ocurrió timeout (handler) -> seguramente el hijo fue KILL'd.
+		   Vamos a seguir y dejar que la siguiente iteración confirme que terminó.
+		   Pero si g_timed_out es 1 ahora, podemos romper y procesar como timeout. */
+		if (g_timed_out)
+		{
+			/* cancelar alarma pendiente */
+			alarm(0);
+			/* asegurarnos de que el hijo está muerto; si no, intentar matarlo */
+			kill(pid, SIGKILL);
+			/* esperar a que termine definitivamente */
+			errno = 0;
+			if (waitpid(pid, &status, 0) == -1)
+			{
+				int saved_errno = errno;
+				sigaction(SIGALRM, &old_sa, NULL);
+				g_child_pid = 0;
+				(void)saved_errno;
+				return -1;
+			}
+			/* ahora status refleja la terminación tras SIGKILL */
+			break;
+		}
+
+		/* Si el hijo fue detenido por una señal (SIGSTOP, SIGTSTP, etc)
+		   consideramos que es una función "bad": notificamos (si verbose),
+		   lo matamos y seguimos para reapear el proceso. */
+		if (WIFSTOPPED(status))
+		{
+			int s = WSTOPSIG(status);
+			if (verbose)
+				printf("Bad function: %s\n", strsignal(s));
+			/* forzar terminación y continuar para reapear */
+			kill(pid, SIGKILL);
+			/* loop: esperamos la terminación real en la siguiente iteración */
+			continue;
+		}
+
+		/* Si terminó (por señal o por exit), salimos del loop y procesamos */
+		if (WIFEXITED(status) || WIFSIGNALED(status))
+			break;
+
+		/* en principio no llegamos aquí, pero por seguridad continuamos esperando */
+	}
+
+	/* ya hemos salido del loop con 'status' final del hijo */
+	/* cancelar la alarma y restaurar el handler original */
+	alarm(0);
+	if (sigaction(SIGALRM, &old_sa, NULL) == -1)
+	{
+		/* error al restaurar; aun así seguiremos intentando reaper y devolver -1 */
+		g_child_pid = 0;
+		return -1;
+	}
+
+	/* procesar casos */
+	if (g_timed_out)
+	{
+		if (verbose)
+			printf("Bad function: timed out after %u seconds\n", timeout);
+		result = 0;
+	}
+	else if (WIFSIGNALED(status))
+	{
+		int s = WTERMSIG(status);
+		if (verbose)
+			printf("Bad function: %s\n", strsignal(s));
+		result = 0;
+	}
+	else if (WIFEXITED(status))
+	{
+		int code = WEXITSTATUS(status);
+		if (code == 0)
+		{
+			if (verbose)
+				printf("Nice function!\n");
+			result = 1;
+		}
+		else
+		{
+			if (verbose)
+				printf("Bad function: exited with code %d\n", code);
+			result = 0;
+		}
+	}
+	else
+	{
+		/* caso inesperado */
+		result = -1;
+	}
+
+	/* limpieza final */
+	g_child_pid = 0;
+	/* restaurar cualquier alarma previa (si la había) */
+	if (old_alarm > 0)
+		alarm(old_alarm);
+
+	return result;
 }
-
-void bad_exit(void)
-{
-	exit(41);
-}
-
-void suicide_f(void)
-{
-    kill(getpid(), SIGKILL);
-    sleep(10);
-}
-
-void fast_print_f(void)
-{
-    printf("fast_print_f executed\n");
-}
-
-void abort_f(void)
-{
-    abort();
-}
-
-// 7. Fonction qui fait un stop avec SIGSTOP (ne se termine pas)
-void stop_f(void)
-{
-    raise(SIGSTOP);
-    // Le processus sera stoppé et jamais repris => timeout dans sandbox
-    sleep(10); // Juste pour être sûr si repris
-}
-
-void segfault_f(void)
-{
-    int *p = NULL;
-    *p = 42;
-}
-
-void cancel_alarm(void)
-{
-	struct sigaction ca;
-	ca.sa_handler = SIG_IGN;
-	sigaction(SIGALRM, &ca, NULL);
-
-	sleep(5);
-	printf("f waited 5 seconds, should be terminated before by alarm set in parent process if timeout < 5\n");
-}
-
-void leak_f(void)
-{
-	int *p = NULL;
-	*p = 4;
-}
-
-void test_func(void (*f)(void), unsigned int timeout, const char* name)
-{
-    printf("==== Test : %s (timeout %us) ====\n", name, timeout);
-    int res = sandbox(f, timeout, true);
-    printf("Result = %d\n\n", res);
-}
-
-int main(void)
-{
-    test_func(ok_f, 2, "ok_f (nice function, immediate return)");
-
-    test_func(inf_f, 2, "inf_f (infinite loop, should timeout)");
-
-    test_func(bad_exit, 2, "bad_exit (exit with code 41)");
-
-    test_func(cancel_alarm, 2, "cancel_alarm (ignore SIGALRM, sleep 5s)");
-
-    test_func(segfault_f, 2, "segfault_f (segmentation fault)");
-
-    test_func(abort_f, 2, "abort_f (abort signal SIGABRT)");
-
-    test_func(stop_f, 2, "stop_f (stops self with SIGSTOP, never continues)");
-
-    test_func(suicide_f, 2, "suicide_f (kills self with SIGKILL)");
-
-    test_func(fast_print_f, 2, "fast_print_f (quick print + return 0)");
-
-    return 0;
-}*/
