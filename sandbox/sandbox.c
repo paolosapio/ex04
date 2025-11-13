@@ -41,26 +41,17 @@ wait).
 We will test your code with very bad functions.
 */
 
-// sandbox.c
-#include <sys/types.h>
-#include <stdbool.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/wait.h>
-#include <signal.h>
-
-#define HIJO 0
 
 /* 
 Parámetros:
 
-    pid → indica qué hijo esperar:
+pid → indica qué hijo esperar:
         > 0 → espera al hijo con ese PID exacto.
         -1 → espera a cualquier hijo (igual que wait()).
         < -1 → espera a cualquier hijo cuyo PGID = |pid|.
         0 → espera a cualquier hijo del mismo grupo de procesos que el padre.
 
-    status → puntero a entero donde se guarda el estado de salida del hijo.
+        status → puntero a entero donde se guarda el estado de salida del hijo.
         Después puedes usar macros para interpretarlo:
         WIFEXITED(status) → ¿el hijo terminó normalmente?
         WEXITSTATUS(status) → valor que devolvió exit().
@@ -68,16 +59,26 @@ Parámetros:
         WTERMSIG(status) → qué señal lo mató.
         WIFSTOPPED(status) → ¿el hijo fue detenido (stop)?
         WSTOPSIG(status) → señal que lo detuvo.
-
-    options → controla el comportamiento:
+        
+        options → controla el comportamiento:
         0 → espera bloqueante, hasta que el hijo cambie de estado.
         WNOHANG → no bloqueante, devuelve 0 si no hay hijo terminado aún.
         WUNTRACED → también retorna si el hijo fue detenido por señal.
         WCONTINUED → también retorna si el hijo fue continuado después de stop.
- */
-//debemos comprobar la *f si esta bien o mal
-
+        */
+       //debemos comprobar la *f si esta bien o mal
+       
+// sandbox.c
+#include <sys/types.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <signal.h>
 #include <stdio.h>
+
+#define HIJO 0
+
 int	sandbox(void (*f)(void), unsigned int timeout, bool verbose)
 {
     (void)timeout;
@@ -93,12 +94,12 @@ int	sandbox(void (*f)(void), unsigned int timeout, bool verbose)
         return (-1);
     if (family == HIJO)
     {
-        alarm(seconds); //!si pasan los seconds sale con exit(SIGALARM)
+        alarm(seconds); //!si pasan los secondos sale con exit(SIGALARM)
         f();
         exit (0);
     }
     waitpid(family, &status, 0);
-    final_status = WIFEXITED(status); //si es 1 true ha terminado bien. 
+    final_status = WIFEXITED(status); //si es 1 true ha terminado bien.
     if (final_status == true) 
     {
         final_status = WEXITSTATUS(status);
