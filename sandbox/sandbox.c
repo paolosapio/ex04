@@ -68,55 +68,164 @@ pid → indica qué hijo esperar:
         */
        //debemos comprobar la *f si esta bien o mal
        
-// sandbox.c
-#include <sys/types.h>
+       
 #include <stdbool.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <errno.h>
+#include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
+#include <signal.h>
+
+int	sandbox(void (*f)(void), unsigned int timeout, bool verbose)
+{
+	pid_t family = fork();
+    pid_t return_proceso_hijo;
+    int status;
+    int exit_code;
+
+	if (family == -1)
+		return (-1);
+	
+	if (family == 0) //en el hijo
+	{
+		alarm(timeout);
+		f();
+		exit(0);
+	}
+
+	return_proceso_hijo = waitpid(family, &status, 0);
+	if (return_proceso_hijo == -1)
+	{
+		if (errno == EINTR)
+		{
+			kill(family, SIGKILL);
+			waitpid(family, NULL, 0);
+			if (verbose)
+				printf("Bad function: timed out after %d seconds\n", timeout);
+			return (0);
+		}
+		return (-1);
+	}
+
+	if (WIFEXITED(status)) //si ha salido con un exit
+	{
+		exit_code = WEXITSTATUS(status);
+		if (exit_code == 0)
+		{
+			if (verbose == true)
+				printf("Nice function!\n");
+			return (1);
+		}
+        if (verbose)
+		    printf("Bad function: exited with code %d\n", exit_code);
+		return (0);
+	}
+	if (WIFSIGNALED(status)) //si ha salido con una signal
+	{
+		if (WTERMSIG(status) == SIGALRM)
+		{
+			if (verbose == true)
+				printf("Bad function: timed out after %d seconds\n", timeout);
+			return (0);
+		}
+		if (verbose == true)
+			printf("Bad function: %s\n", strsignal(WTERMSIG(status)));
+		return (0);
+	}
+
+	return (-1);
+}
+
+/* 
+void printer_caca(void)
+{
+
+    while (1)
+    {}
+
+    // char *caca = NULL;
+    write(1, "\n", 1);
+    write(1, "💩💩💩💩💩\n", 22);
+    write(1, "💩 caca 💩\n", 15);
+    write(1, "💩💩💩💩💩\n", 22);
+    write(1, "\n", 1);
+    // printf("%c", caca[10]); //!provoca un segfault
+    // exit(99);
+}
+
+#include <stdio.h>
+
+// fork, waitpid, exit, alarm, sigaction, kill, printf, strsignal, errno
+int main(void)
+{
+
+    bool            verbose = false;
+    unsigned int    timeout = 3;
+    int             result;
+
+    result = sandbox(printer_caca, timeout, verbose);
+    printf("result sandbox is: %d\n", result);
+    return (0);
+}
+ 
+
+
+
+
+
+
+
+
+ vieja version:
+
+ // sandbox.c
+#include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdbool.h>
+#include <stdlib.h>
 
-#define HIJO 0
+int sandbox(void (*f)(void), unsigned int timeout, bool verbose){
+  pid_t child;
+  int status;
+  int res;
 
-int	sandbox(void (*f)(void), unsigned int timeout, bool verbose)
-{
-    (void)timeout;
-    (void)verbose;
-
-    pid_t   family;
-    int     status;
-    int     final_status;
-    int     seconds = 4;
-
-    family = fork();
-    if (family == -1)
-        return (-1);
-    if (family == HIJO)
-    {
-        alarm(seconds); //!si pasan los secondos sale con exit(SIGALARM)
-        f();
-        exit (0);
+  (void)verbose;
+  child = fork();
+  if(child < 0) return -1;
+  if(child == 0){
+    alarm(timeout);
+    f();
+    exit(0);
+  }
+  
+  alarm(timeout);
+  res = waitpid(child, &status, 0);
+  if(res == -1){
+    return -1;
+  }
+  if(res == child){
+    if(WIFEXITED(status)){
+      if(WEXITSTATUS(status) == 0)
+        return(printf("Nice function!\n"), 1);
+      else if(WEXITSTATUS(status) == SIGALRM)
+        return 
+      printf("Bad function: exited with code %d\n", WEXITSTATUS(status));
+      return 0;
     }
-    waitpid(family, &status, 0);
-    final_status = WIFEXITED(status); //si es 1 true ha terminado bien.
-    if (final_status == true) 
-    {
-        final_status = WEXITSTATUS(status);
-        if (final_status != 0)
-        {
-            return (0);
-        }
-        return (1);
+    else if(WIFSIGNALED(status)){
+      printf("Bad function: %s\n", strsignal(WTERMSIG(status)));
+      return 0;
     }
-    if (final_status == SIGALRM) //falta alalizar esta signal para comparar realmente con final_status
-        return (0);
-    //printf("final_status: %d\n", final_status);
-    // return 1 if f is nice , 0 if f is bad or -1 in case of an error in your function
-    return (0);
+  }
+  return -1;
 }
 
-/* 
+
 void printer_caca(void)
 {
 
