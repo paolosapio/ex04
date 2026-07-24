@@ -15,18 +15,18 @@ int	ft_popen(const char *file, char *const *argv, char type)
 	pid_t pid;
 
 	if ((type != 'r' && type != 'w') || file == NULL || argv == NULL)
-        return (-1);
+		return (-1);
 
 	if (pipe(fd_pipe) == -1)
-        return (-1);
+		return (-1);
 
-    if (type == 'r')
+	if (type == 'r')
 	{
 		pid = fork();
 		if (pid == 0)
 		{
 			close(fd_pipe[PIPE__READ]);
-			dup2(fd_pipe[PIPE_WRITE], 1);
+			dup2(fd_pipe[PIPE_WRITE], 1); // no escrive en la terminal, se qeuda en el pipe
 			close(fd_pipe[PIPE_WRITE]);
 			execvp(file, argv);
 			exit(1);
@@ -48,7 +48,7 @@ int	ft_popen(const char *file, char *const *argv, char type)
 		}
 		close(fd_pipe[PIPE__READ]);
 		return (fd_pipe[PIPE_WRITE]);
-	};
+	}
 	return (-1);
 }
 
@@ -85,18 +85,18 @@ int	ft_popen(const char *file, char *const *argv, char type)
 		close(fd_pipe[PIPE_WRITE]);
 		return (fd_pipe[PIPE__READ]);
 	}
-    else
-    {
-        close(fd_pipe[PIPE__READ]);
-        return (fd_pipe[PIPE_WRITE]);
-    }
+	else
+	{
+		close(fd_pipe[PIPE__READ]);
+		return (fd_pipe[PIPE_WRITE]);
+	}
 } */
 
-/* #include <stdio.h> //popen
+#include <stdio.h> //popen
 
 int main()
 {
-    int fd;
+	int fd;
 	char *const args[] = {"ls", NULL};
 
 	fd = ft_popen("ls", args, 'r');
@@ -104,6 +104,7 @@ int main()
 	int byte_read;
 	while (1)
 	{
+		printf("%d\n", fd);
 		byte_read = read(fd, buffer, 100);
 		if(byte_read <= 0)
 			break ;
@@ -111,11 +112,11 @@ int main()
 		printf("TEST: %s", buffer);
 	}
 	return (0);
-} */
+}
 
 /* int main()
 {
-    int fd;
+	int fd;
 	char *const args[] = {"cat", "-e", NULL};
 
 	fd = ft_popen("cat", args, 'w');
